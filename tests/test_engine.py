@@ -85,3 +85,34 @@ def test_build_model_persists_downloads_under_models_dir(monkeypatch, tmp_path):
     assert captured["kwargs"]["device"] == "cuda"
     assert captured["kwargs"]["compute_type"] == "float16"
     assert captured["kwargs"]["download_root"] == str(tmp_path)
+
+
+def test_release_cuda_models_only_removes_cuda_cache(monkeypatch, tmp_path):
+    collect_calls: list[bool] = []
+    monkeypatch.setattr("app.asr.engine.gc.collect", lambda: collect_calls.append(True))
+
+    engine = AsrEngine(tmp_path)
+    engine._models[("large-v3", "cuda", "float16")] = object()
+    engine._models[("small", "cuda", "int8_float16")] = object()
+    engine._models[("large-v3", "cpu", "int8")] = object()
+
+    released_count = engine.release_cuda_models()
+
+    assert released_count == 2
+    assert ("large-v3", "cpu", "int8") in engine._models
+    assert all(key[1] != "cuda" for key in engine._models)
+    assert collect_calls == [True]
+
+
+def test_release_cuda_models_skips_gc_when_no_cuda_cache(monkeypatch, tmp_path):
+    collect_calls: list[bool] = []
+    monkeypatch.setattr("app.asr.engine.gc.collect", lambda: collect_calls.append(True))
+
+    engine = AsrEngine(tmp_path)
+    engine._models[("large-v3", "cpu", "int8")] = object()
+
+    released_count = engine.release_cuda_models()
+
+    assert released_count == 0
+    assert ("large-v3", "cpu", "int8") in engine._models
+    assert collect_calls == []

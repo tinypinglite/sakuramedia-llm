@@ -1,0 +1,15 @@
+services:
+  asr:
+    image: sakuramedia-llm:cpu
+    build:
+      context: .
+      target: cpu
+    ports:
+      - "8000:8000"
+    environment:
+      - SAKURA_API_KEY=${SAKURA_API_KEY:?SAKURA_API_KEY is required}
+      # CPU 文件固定走 cpu 策略，避免运行时歧义。
+      - SAKURA_RUNTIME_DEVICE_POLICY=cpu
+    volumes:
+      - ./storage:/app/storage
+      - ./models:/app/models

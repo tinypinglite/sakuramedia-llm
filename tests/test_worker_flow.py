@@ -38,6 +38,16 @@ class FakeEngine:
         )
 
 
+class IdleReleaseEngine:
+    def __init__(self, released_count: int = 1):
+        self.release_calls = 0
+        self.released_count = released_count
+
+    def release_cuda_models(self) -> int:
+        self.release_calls += 1
+        return self.released_count
+
+
 def test_worker_processes_task_successfully_with_cpu_policy(test_settings, monkeypatch):
     initialize_database(test_settings.database_path)
     service = TaskService(test_settings)
@@ -122,3 +132,78 @@ def test_worker_cleans_up_audio_files_when_transcription_fails(test_settings, mo
     assert stored.status == TaskStatus.FAILED.value
     assert not Path(stored.upload_path).exists()
     assert not Path(stored.upload_path).parent.joinpath("normalized.wav").exists()
+
+
+def test_worker_releases_cuda_cache_once_after_idle_timeout(test_settings, monkeypatch):
+    test_settings.runtime_device_policy = RuntimeDevicePolicy.CUDA
+    engine = IdleReleaseEngine()
+    worker = TaskWorker(settings=test_settings, service=object(), engine=engine)
+    worker._last_task_finished_monotonic = 0.0
+
+    monkeypatch.setattr(worker, "process_once", lambda: False)
+    monkeypatch.setattr("app.asr.worker.time.monotonic", lambda: 181.0)
+
+    sleep_calls = {"count": 0}
+
+    def fake_sleep(_seconds: float) -> None:
+        sleep_calls["count"] += 1
+        if sleep_calls["count"] >= 2:
+            worker._stop_event.set()
+
+    monkeypatch.setattr("app.asr.worker.time.sleep", fake_sleep)
+
+    worker.run_forever()
+
+    assert engine.release_calls == 1
+
+
+def test_worker_does_not_release_cuda_cache_when_policy_is_cpu(test_settings, monkeypatch):
+    test_settings.runtime_device_policy = RuntimeDevicePolicy.CPU
+    engine = IdleReleaseEngine()
+    worker = TaskWorker(settings=test_settings, service=object(), engine=engine)
+    worker._last_task_finished_monotonic = 0.0
+
+    monkeypatch.setattr(worker, "process_once", lambda: False)
+
+    sleep_calls = {"count": 0}
+
+    def fake_sleep(_seconds: float) -> None:
+        sleep_calls["count"] += 1
+        if sleep_calls["count"] >= 2:
+            worker._stop_event.set()
+
+    monkeypatch.setattr("app.asr.worker.time.sleep", fake_sleep)
+
+    worker.run_forever()
+
+    assert engine.release_calls == 0
+
+
+def test_worker_can_release_again_after_processing_new_task(test_settings, monkeypatch):
+    test_settings.runtime_device_policy = RuntimeDevicePolicy.CUDA
+    engine = IdleReleaseEngine()
+    worker = TaskWorker(settings=test_settings, service=object(), engine=engine)
+    worker._last_task_finished_monotonic = 0.0
+
+    process_results = iter([False, True, False])
+
+    def fake_process_once() -> bool:
+        return next(process_results)
+
+    monkeypatch.setattr(worker, "process_once", fake_process_once)
+
+    monotonic_values = iter([181.0, 200.0, 381.0])
+    monkeypatch.setattr("app.asr.worker.time.monotonic", lambda: next(monotonic_values))
+
+    sleep_calls = {"count": 0}
+
+    def fake_sleep(_seconds: float) -> None:
+        sleep_calls["count"] += 1
+        if sleep_calls["count"] >= 2:
+            worker._stop_event.set()
+
+    monkeypatch.setattr("app.asr.worker.time.sleep", fake_sleep)
+
+    worker.run_forever()
+
+    assert engine.release_calls == 2

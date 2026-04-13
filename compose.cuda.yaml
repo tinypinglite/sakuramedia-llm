@@ -1,21 +1,5 @@
 services:
-  asr-cpu:
-    profiles: ["cpu"]
-    image: sakuramedia-llm:cpu
-    build:
-      context: .
-      target: cpu
-    ports:
-      - "8000:8000"
-    environment:
-      - SAKURA_API_KEY=${SAKURA_API_KEY:?SAKURA_API_KEY is required}
-      - SAKURA_RUNTIME_DEVICE_POLICY=cpu
-    volumes:
-      - ./storage:/app/storage
-      - ./models:/app/models
-
-  asr-cuda:
-    profiles: ["cuda"]
+  asr:
     image: sakuramedia-llm:cuda
     build:
       context: .
@@ -23,6 +7,7 @@ services:
     runtime: nvidia
     environment:
       - SAKURA_API_KEY=${SAKURA_API_KEY:?SAKURA_API_KEY is required}
+      # CUDA 文件固定走 cuda 策略，缺少 GPU 时应直接失败。
       - SAKURA_RUNTIME_DEVICE_POLICY=cuda
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility

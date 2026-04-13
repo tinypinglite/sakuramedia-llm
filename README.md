@@ -43,23 +43,18 @@ SAKURA_RUNTIME_DEVICE_POLICY=cpu
 镜像内不再依赖 Poetry/conda，统一通过 `requirements.txt` + `pip` 安装运行依赖。
 其中 CPU 镜像运行时为 Python 3.11，CUDA 镜像运行时为 Python 3.10。
 
-### 构建镜像
+### Compose 文件
 
-构建 CPU 镜像：
+仓库根目录提供两个独立 Compose 文件：
 
-```bash
-docker build --target cpu -t sakuramedia-llm:cpu .
-```
+- `compose.cpu.yaml`
+- `compose.cuda.yaml`
 
-构建 CUDA 镜像：
-
-```bash
-docker build --target cuda -t sakuramedia-llm:cuda .
-```
+CPU 和 CUDA 已拆分到不同文件，不再放在同一个 compose 文件中。
 
 CUDA 镜像基于 `nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04`。宿主机需要提前安装兼容的 NVIDIA Driver 和 NVIDIA Container Toolkit。
 
-### 运行镜像
+### 启动方式（统一使用 Compose）
 
 推荐先准备持久化目录：
 
@@ -67,48 +62,25 @@ CUDA 镜像基于 `nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04`。宿主机需
 mkdir -p storage/tasks models
 ```
 
-运行 CPU 镜像：
+准备环境变量（可写入根目录 `.env`）：
 
 ```bash
-docker run --rm \
-  -p 8000:8000 \
-  -e SAKURA_API_KEY="replace-with-a-secret" \
-  -e SAKURA_RUNTIME_DEVICE_POLICY="cpu" \
-  -v "$(pwd)/storage:/app/storage" \
-  -v "$(pwd)/models:/app/models" \
-  sakuramedia-llm:cpu
+SAKURA_API_KEY=replace-with-a-secret
 ```
-
-运行 CUDA 镜像：
-
-```bash
-docker run --rm \
-  --gpus all \
-  -p 8000:8000 \
-  -e SAKURA_API_KEY="replace-with-a-secret" \
-  -e SAKURA_RUNTIME_DEVICE_POLICY="cuda" \
-  -v "$(pwd)/storage:/app/storage" \
-  -v "$(pwd)/models:/app/models" \
-  sakuramedia-llm:cuda
-```
-
-容器内默认使用 `/app/storage` 保存 SQLite、上传文件和转录产物，使用 `/app/models` 作为本地模型目录和下载缓存目录。推荐将模型目录挂载为持久卷。
-
-### 使用 Compose
-
-仓库根目录提供了 `compose.yaml`。
 
 启动 CPU 服务：
 
 ```bash
-docker compose --profile cpu up --build asr-cpu
+docker compose -f compose.cpu.yaml up --build
 ```
 
 启动 CUDA 服务：
 
 ```bash
-docker compose --profile cuda up --build asr-cuda
+docker compose -f compose.cuda.yaml up --build
 ```
+
+容器内默认使用 `/app/storage` 保存 SQLite、上传文件和转录产物，使用 `/app/models` 作为本地模型目录和下载缓存目录。推荐将模型目录挂载为持久卷。
 
 ## 目录
 

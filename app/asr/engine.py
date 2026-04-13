@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import importlib.util
 import os
 import sys
@@ -150,6 +151,18 @@ class AsrEngine:
                 model = self._build_model(model_size, device, compute_type)
                 self._models[key] = model
             return model
+
+    def release_cuda_models(self) -> int:
+        with self._lock:
+            cuda_keys = [key for key in self._models.keys() if key[1] == "cuda"]
+            for key in cuda_keys:
+                del self._models[key]
+            released_count = len(cuda_keys)
+
+        if released_count > 0:
+            # 仅回收 CUDA 缓存模型，避免改动设备策略。
+            gc.collect()
+        return released_count
 
     @staticmethod
     def _format_srt_timestamp(seconds: float) -> str:

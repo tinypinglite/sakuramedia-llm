@@ -8,11 +8,14 @@ from loguru import logger
 
 from app.asr.audio import normalize_audio
 from app.asr.engine import AsrEngine
+from app.asr.schemas import RuntimeDevicePolicy
 from app.asr.service import TaskService
 from app.asr.settings import Settings
 
 
 class TaskWorker:
+    CUDA_IDLE_RELEASE_SECONDS = 180.0
+
     def __init__(self, *, settings: Settings, service: TaskService, engine: AsrEngine):
         self.settings = settings
         self.service = service
@@ -20,6 +23,8 @@ class TaskWorker:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._current_task_id: str | None = None
+        self._last_task_finished_monotonic = time.monotonic()
+        self._cuda_cache_released_for_idle = False
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -47,9 +52,33 @@ class TaskWorker:
         logger.info("ASR worker started")
         while not self._stop_event.is_set():
             handled = self.process_once()
-            if not handled:
-                time.sleep(self.settings.worker_poll_interval)
+            if handled:
+                self._last_task_finished_monotonic = time.monotonic()
+                self._cuda_cache_released_for_idle = False
+                continue
+            self._release_cuda_cache_if_idle()
+            time.sleep(self.settings.worker_poll_interval)
         logger.info("ASR worker stopped")
+
+    def _release_cuda_cache_if_idle(self) -> None:
+        if self.settings.runtime_device_policy != RuntimeDevicePolicy.CUDA:
+            return
+        if self._cuda_cache_released_for_idle:
+            return
+
+        idle_seconds = time.monotonic() - self._last_task_finished_monotonic
+        if idle_seconds < self.CUDA_IDLE_RELEASE_SECONDS:
+            return
+
+        # CUDA 模式在连续空闲超时后释放模型缓存，降低显存常驻占用。
+        released_count = self.engine.release_cuda_models()
+        self._cuda_cache_released_for_idle = True
+        if released_count > 0:
+            logger.info(
+                "Worker idle for {:.1f}s, released {} CUDA model cache(s)",
+                idle_seconds,
+                released_count,
+            )
 
     def process_once(self) -> bool:
         task = self.service.claim_next_task()
