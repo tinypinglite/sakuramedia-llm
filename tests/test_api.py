@@ -8,7 +8,7 @@ from fastapi import UploadFile
 import pytest
 
 from app.asr.engine import AsrResult, SegmentResult
-from app.asr.schemas import DeviceChoice, TaskStatus
+from app.asr.schemas import TaskStatus
 
 
 @pytest.mark.parametrize(
@@ -69,7 +69,8 @@ def test_create_task_and_poll_status(client, auth_headers):
     assert status_payload["task_id"] == task_id
     assert status_payload["status"] == TaskStatus.QUEUED.value
     assert status_payload["model_size"] == "large-v3"
-    assert status_payload["language"] == "ja"
+    assert status_payload["requested_device"] == "cpu"
+    assert status_payload["language"] == "auto"
     assert status_payload["compute_type"] is None
 
     result_response = client.get(f"/api/v1/asr/tasks/{task_id}/result", headers=auth_headers)
@@ -77,12 +78,12 @@ def test_create_task_and_poll_status(client, auth_headers):
     assert result_response.json()["detail"]["status"] == TaskStatus.QUEUED.value
 
 
-def test_create_task_accepts_device_and_language_only(client, auth_headers):
+def test_create_task_ignores_device_and_language_form_fields(client, auth_headers):
     response = client.post(
         "/api/v1/asr/tasks",
         headers=auth_headers,
         files={"file": ("audio.wav", b"fake-audio", "audio/wav")},
-        data={"device": "cpu", "language": "en"},
+        data={"device": "cuda", "language": "en"},
     )
     assert response.status_code == 202
     payload = response.json()
@@ -91,7 +92,7 @@ def test_create_task_accepts_device_and_language_only(client, auth_headers):
     assert status_response.status_code == 200
     status_payload = status_response.json()
     assert status_payload["requested_device"] == "cpu"
-    assert status_payload["language"] == "en"
+    assert status_payload["language"] == "auto"
     assert status_payload["model_size"] == "large-v3"
 
 
@@ -99,10 +100,7 @@ def test_get_result_for_completed_task(client, auth_headers):
     service = client.app.state.task_service
     task = service.create_task(
         upload=UploadFile(filename="audio.wav", file=BytesIO(b"fake-audio")),
-        model_size="large-v3",
-        device=DeviceChoice.CPU,
         compute_type="int8",
-        language="ja",
     )
     task_dir = Path(task.upload_path).parent
     normalized_audio = task_dir / "normalized.wav"
@@ -137,6 +135,8 @@ def test_healthz(client, auth_headers):
     assert payload["app_name"] == "sakuramedia-llm"
     assert payload["database_ok"] is True
     assert payload["ffmpeg_ok"] is True
+    assert payload["runtime_device_policy"] == "cpu"
+    assert payload["model_size"] == "large-v3"
 
 
 def test_healthz_reflects_dependency_probe_failures(client, monkeypatch, auth_headers):
@@ -149,3 +149,4 @@ def test_healthz_reflects_dependency_probe_failures(client, monkeypatch, auth_he
     payload = response.json()
     assert payload["database_ok"] is False
     assert payload["ffmpeg_ok"] is False
+    assert payload["runtime_device_policy"] == "cpu"

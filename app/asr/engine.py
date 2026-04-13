@@ -112,13 +112,15 @@ class AsrEngine:
 
     @staticmethod
     def resolve_device(requested_device: DeviceChoice) -> str:
+        if requested_device == DeviceChoice.AUTO:
+            raise RuntimeError("device=auto is not allowed")
         if requested_device == DeviceChoice.CPU:
             return "cpu"
         if requested_device == DeviceChoice.CUDA:
             if not AsrEngine.cuda_available():
                 raise RuntimeError("CUDA requested but no CUDA runtime is available")
             return "cuda"
-        return "cuda" if AsrEngine.cuda_available() else "cpu"
+        raise RuntimeError(f"Unsupported device: {requested_device}")
 
     def _build_model(self, model_size: str, device: str, compute_type: str) -> WhisperModel:
         local_model_path = self.models_dir / f"faster-whisper-{model_size}"
@@ -164,27 +166,26 @@ class AsrEngine:
         model_size: str,
         device: DeviceChoice,
         compute_type: str | None,
-        language: str,
         progress_callback: ProgressCallback | None = None,
     ) -> AsrResult:
         actual_device = self.resolve_device(device)
         resolved_compute_type = self.detect_compute_type(actual_device, compute_type)
         model = self._get_model(model_size, actual_device, resolved_compute_type)
 
-        segments, info = model.transcribe(
-            str(input_path),
-            beam_size=1,
-            best_of=1,
-            language=language,
-            vad_filter=True,
-            vad_parameters={
+        transcribe_kwargs = {
+            "beam_size": 1,
+            "best_of": 1,
+            # 不传 language，让 Whisper 自行检测语言。
+            "vad_filter": True,
+            "vad_parameters": {
                 "threshold": 0.3,
                 "min_speech_duration_ms": 200,
                 "min_silence_duration_ms": 600,
             },
-            condition_on_previous_text=False,
-            compression_ratio_threshold=1.8,
-        )
+            "condition_on_previous_text": False,
+            "compression_ratio_threshold": 1.8,
+        }
+        segments, info = model.transcribe(str(input_path), **transcribe_kwargs)
 
         segment_results: list[SegmentResult] = []
         text_lines: list[str] = []
@@ -217,7 +218,7 @@ class AsrEngine:
             full_text="\n".join(text_lines),
             srt_text="\n".join(srt_blocks).strip() + ("\n" if srt_blocks else ""),
             segments=segment_results,
-            language=str(getattr(info, "language", language)),
+            language=str(getattr(info, "language", "unknown")),
             language_probability=float(getattr(info, "language_probability", 0.0) or 0.0),
             duration_seconds=duration,
             actual_device=actual_device,

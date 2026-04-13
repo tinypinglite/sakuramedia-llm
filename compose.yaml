@@ -9,6 +9,7 @@ services:
       - "8000:8000"
     environment:
       - SAKURA_API_KEY=${SAKURA_API_KEY:?SAKURA_API_KEY is required}
+      - SAKURA_RUNTIME_DEVICE_POLICY=cpu
     volumes:
       - ./storage:/app/storage
       - ./models:/app/models
@@ -19,17 +20,14 @@ services:
     build:
       context: .
       target: cuda
-    ports:
-      - "8000:8000"
+    runtime: nvidia
     environment:
       - SAKURA_API_KEY=${SAKURA_API_KEY:?SAKURA_API_KEY is required}
+      - SAKURA_RUNTIME_DEVICE_POLICY=cuda
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    ports:
+      - "8000:8000"
     volumes:
       - ./storage:/app/storage
       - ./models:/app/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]

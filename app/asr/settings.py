@@ -6,8 +6,11 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.asr.schemas import DeviceChoice, RuntimeDevicePolicy
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+FIXED_MODEL_SIZE = "large-v3"
 
 
 class Settings(BaseSettings):
@@ -20,8 +23,7 @@ class Settings(BaseSettings):
     tasks_dir: Path = Field(default=REPO_ROOT / "storage" / "tasks")
     models_dir: Path = Field(default=REPO_ROOT / "models")
     ffmpeg_binary: str = "ffmpeg"
-    default_model_size: str = "large-v3"
-    default_language: str = "ja"
+    runtime_device_policy: RuntimeDevicePolicy
     worker_poll_interval: float = 1.0
     worker_enabled: bool = True
 
@@ -33,6 +35,9 @@ class Settings(BaseSettings):
         if not normalized_value:
             raise ValueError("api_key must not be empty")
         return normalized_value
+
+    def runtime_device_choice(self) -> DeviceChoice:
+        return DeviceChoice(self.runtime_device_policy.value)
 
     def ensure_storage_dirs(self) -> None:
         self.storage_dir.mkdir(parents=True, exist_ok=True)

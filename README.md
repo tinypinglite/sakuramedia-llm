@@ -4,6 +4,8 @@
 
 ## 环境准备
 
+本地开发环境继续使用 `conda + poetry`（Python 3.11）：
+
 ```bash
 conda env create -f environment.yml
 conda activate sakuramedia-llm
@@ -14,6 +16,7 @@ poetry install
 
 ```bash
 export SAKURA_API_KEY="replace-with-a-secret"
+export SAKURA_RUNTIME_DEVICE_POLICY="cpu" # 或 cuda
 poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
 
@@ -23,9 +26,11 @@ poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 
 ```bash
 SAKURA_API_KEY=replace-with-a-secret
+SAKURA_RUNTIME_DEVICE_POLICY=cpu
 ```
 
-`SAKURA_API_KEY` 为必填项，未配置时服务会在启动阶段直接失败。
+`SAKURA_API_KEY` 与 `SAKURA_RUNTIME_DEVICE_POLICY` 都是必填项，未配置时服务会在启动阶段直接失败。  
+`SAKURA_RUNTIME_DEVICE_POLICY` 只允许 `cpu` 或 `cuda`。当配置为 `cuda` 且 CUDA 运行时不可用时，服务会启动失败，不会自动回退 CPU。
 
 ## Docker 部署
 
@@ -35,6 +40,8 @@ SAKURA_API_KEY=replace-with-a-secret
 - `sakuramedia-llm:cuda`
 
 两者都保持当前服务形态不变，仍然使用单进程内 worker、SQLite 和本地文件系统。
+镜像内不再依赖 Poetry/conda，统一通过 `requirements.txt` + `pip` 安装运行依赖。
+其中 CPU 镜像运行时为 Python 3.11，CUDA 镜像运行时为 Python 3.10。
 
 ### 构建镜像
 
@@ -66,6 +73,7 @@ mkdir -p storage/tasks models
 docker run --rm \
   -p 8000:8000 \
   -e SAKURA_API_KEY="replace-with-a-secret" \
+  -e SAKURA_RUNTIME_DEVICE_POLICY="cpu" \
   -v "$(pwd)/storage:/app/storage" \
   -v "$(pwd)/models:/app/models" \
   sakuramedia-llm:cpu
@@ -78,6 +86,7 @@ docker run --rm \
   --gpus all \
   -p 8000:8000 \
   -e SAKURA_API_KEY="replace-with-a-secret" \
+  -e SAKURA_RUNTIME_DEVICE_POLICY="cuda" \
   -v "$(pwd)/storage:/app/storage" \
   -v "$(pwd)/models:/app/models" \
   sakuramedia-llm:cuda
@@ -115,6 +124,9 @@ docker compose --profile cuda up --build asr-cuda
 - `GET /healthz`
 
 所有接口都必须携带请求头 `X-API-Key`，包括 `/healthz`。
+
+`POST /api/v1/asr/tasks` 只接收音频文件，不接收 `device` 或 `language`。  
+设备策略由服务启动参数 `SAKURA_RUNTIME_DEVICE_POLICY` 统一决定；语言由 Whisper 自动检测。
 
 示例：
 

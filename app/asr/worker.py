@@ -8,7 +8,6 @@ from loguru import logger
 
 from app.asr.audio import normalize_audio
 from app.asr.engine import AsrEngine
-from app.asr.schemas import DeviceChoice
 from app.asr.service import TaskService
 from app.asr.settings import Settings
 
@@ -73,9 +72,9 @@ class TaskWorker:
             result = self.engine.transcribe(
                 normalized_audio_path,
                 model_size=task.model_size,
-                device=DeviceChoice(task.requested_device),
+                # 设备由启动策略强约束，不允许任务阶段自动回退。
+                device=self.settings.runtime_device_choice(),
                 compute_type=task.compute_type,
-                language=task.language,
                 progress_callback=lambda progress, _current, duration: self.service.update_progress(
                     task.id,
                     progress=progress,

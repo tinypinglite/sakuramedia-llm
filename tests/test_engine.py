@@ -20,9 +20,9 @@ class BrokenCTranslate2:
         raise RuntimeError("boom")
 
 
-def test_resolve_device_auto_falls_back_to_cpu(monkeypatch):
-    monkeypatch.setattr(AsrEngine, "cuda_available", staticmethod(lambda: False))
-    assert AsrEngine.resolve_device(DeviceChoice.AUTO) == "cpu"
+def test_resolve_device_rejects_auto():
+    with pytest.raises(RuntimeError, match="device=auto is not allowed"):
+        AsrEngine.resolve_device(DeviceChoice.AUTO)
 
 
 def test_resolve_device_cuda_requires_runtime(monkeypatch):

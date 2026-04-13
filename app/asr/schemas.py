@@ -19,6 +19,11 @@ class DeviceChoice(str, Enum):
     CPU = "cpu"
 
 
+class RuntimeDevicePolicy(str, Enum):
+    CUDA = "cuda"
+    CPU = "cpu"
+
+
 class SegmentResponse(BaseModel):
     id: int
     start: float
@@ -72,5 +77,5 @@ class HealthResponse(BaseModel):
     worker_alive: bool
     current_task_id: str | None = None
     cuda_available: bool
-    default_model_size: str
-    default_language: str
+    runtime_device_policy: RuntimeDevicePolicy
+    model_size: str

@@ -3,13 +3,12 @@ from __future__ import annotations
 import secrets
 import shutil
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
 
 from app.asr.audio import AudioValidationError
 from app.asr.db import ensure_connection
 from app.asr.engine import AsrEngine
 from app.asr.schemas import (
-    DeviceChoice,
     HealthResponse,
     TaskCreateResponse,
     TaskResultResponse,
@@ -17,8 +16,9 @@ from app.asr.schemas import (
     TaskStatusResponse,
 )
 from app.asr.service import TaskService
-from app.asr.settings import Settings
+from app.asr.settings import FIXED_MODEL_SIZE, Settings
 from app.asr.worker import TaskWorker
+
 
 def get_task_service(request: Request) -> TaskService:
     return request.app.state.task_service
@@ -47,17 +47,10 @@ router = APIRouter(dependencies=[Depends(require_api_key)])
 @router.post("/api/v1/asr/tasks", response_model=TaskCreateResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_task(
     file: UploadFile = File(...),
-    device: DeviceChoice = Form(DeviceChoice.AUTO),
-    language: str | None = Form(None),
     task_service: TaskService = Depends(get_task_service),
-    settings: Settings = Depends(get_settings_dependency),
 ) -> TaskCreateResponse:
     try:
-        task = task_service.create_task(
-            upload=file,
-            device=device,
-            language=language or settings.default_language,
-        )
+        task = task_service.create_task(upload=file)
     except AudioValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     finally:
@@ -108,6 +101,6 @@ def healthz(
         worker_alive=worker.is_alive(),
         current_task_id=worker.snapshot()["current_task_id"],
         cuda_available=AsrEngine.cuda_available(),
-        default_model_size=settings.default_model_size,
-        default_language=settings.default_language,
+        runtime_device_policy=settings.runtime_device_policy,
+        model_size=FIXED_MODEL_SIZE,
     )

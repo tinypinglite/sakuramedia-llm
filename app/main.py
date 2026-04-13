@@ -10,6 +10,7 @@ from app.asr.audio import ensure_ffmpeg_available
 from app.asr.db import close_database, initialize_database
 from app.asr.engine import AsrEngine
 from app.asr.service import TaskService
+from app.asr.schemas import RuntimeDevicePolicy
 from app.asr.settings import get_settings
 from app.asr.worker import TaskWorker
 
@@ -20,6 +21,9 @@ def create_app(*, settings_override=None) -> FastAPI:
         settings = settings_override or get_settings()
         settings.ensure_storage_dirs()
         AsrEngine.prepare_cuda_runtime()
+        if settings.runtime_device_policy == RuntimeDevicePolicy.CUDA and not AsrEngine.cuda_available():
+            # CUDA 策略必须硬依赖 CUDA 运行时，不允许静默回退到 CPU。
+            raise RuntimeError("runtime_device_policy=cuda requires a working CUDA runtime")
         ensure_ffmpeg_available(settings.ffmpeg_binary)
         initialize_database(settings.database_path)
 

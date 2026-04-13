@@ -14,6 +14,7 @@ from app.main import create_app
 def test_settings(tmp_path: Path) -> Settings:
     settings = Settings(
         api_key="test-api-key",
+        runtime_device_policy="cpu",
         storage_dir=tmp_path / "storage",
         database_path=tmp_path / "storage" / "test.sqlite3",
         tasks_dir=tmp_path / "storage" / "tasks",

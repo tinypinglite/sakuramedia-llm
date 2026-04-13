@@ -13,8 +13,8 @@ from app.asr.audio import AudioValidationError, is_supported_audio_filename
 from app.asr.db import ensure_connection, get_database
 from app.asr.engine import AsrResult
 from app.asr.models import AsrTask
-from app.asr.schemas import DeviceChoice, TaskStatus
-from app.asr.settings import Settings
+from app.asr.schemas import TaskStatus
+from app.asr.settings import FIXED_MODEL_SIZE, Settings
 
 
 class TaskService:
@@ -29,9 +29,6 @@ class TaskService:
         self,
         *,
         upload: UploadFile,
-        device: DeviceChoice,
-        language: str,
-        model_size: str | None = None,
         compute_type: str | None = None,
     ) -> AsrTask:
         filename = upload.filename or "upload.bin"
@@ -55,10 +52,13 @@ class TaskService:
             status=TaskStatus.QUEUED.value,
             original_filename=filename,
             upload_path=str(upload_path),
-            model_size=model_size or self.settings.default_model_size,
-            requested_device=device.value,
+            # model 固定写死，避免接口和运行配置分叉。
+            model_size=FIXED_MODEL_SIZE,
+            # 设备策略来自启动配置，任务元数据按配置原样记录。
+            requested_device=self.settings.runtime_device_policy.value,
             compute_type=compute_type or None,
-            language=language,
+            # 语言交给 Whisper 自动检测，任务阶段先标记 auto。
+            language="auto",
             created_at=now,
             updated_at=now,
         )
@@ -144,6 +144,8 @@ class TaskService:
             text_path=str(text_path),
             srt_path=str(srt_path),
             result_json_path=str(result_json_path),
+            # 成功后回填实际识别语言，状态接口可直接读取。
+            language=result.language,
             actual_device=result.actual_device,
             compute_type=result.compute_type,
             progress=1.0,
