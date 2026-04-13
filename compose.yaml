@@ -1,0 +1,35 @@
+services:
+  asr-cpu:
+    profiles: ["cpu"]
+    image: sakuramedia-llm:cpu
+    build:
+      context: .
+      target: cpu
+    ports:
+      - "8000:8000"
+    environment:
+      - SAKURA_API_KEY=${SAKURA_API_KEY:?SAKURA_API_KEY is required}
+    volumes:
+      - ./storage:/app/storage
+      - ./models:/app/models
+
+  asr-cuda:
+    profiles: ["cuda"]
+    image: sakuramedia-llm:cuda
+    build:
+      context: .
+      target: cuda
+    ports:
+      - "8000:8000"
+    environment:
+      - SAKURA_API_KEY=${SAKURA_API_KEY:?SAKURA_API_KEY is required}
+    volumes:
+      - ./storage:/app/storage
+      - ./models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
